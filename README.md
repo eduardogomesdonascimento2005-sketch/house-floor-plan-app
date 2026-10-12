@@ -1,2 +1,5 @@
-# house-floor-plan-app
-Um aplicativo interativo para criar e visualizar plantas de casa
+node_modules
+dist
+.vite
+npm-debug.log*
+.DS_Store
