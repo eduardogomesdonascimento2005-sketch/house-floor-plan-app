@@ -32,7 +32,6 @@ const ROOM_PRESETS: Record<RoomType, { width: number; height: number; color: str
 };
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
-
 const formatArea = (value: number) => `${value.toFixed(1)} m²`;
 
 const createRoom = (type: RoomType, id: number): Room => ({
@@ -47,13 +46,16 @@ const createRoom = (type: RoomType, id: number): Room => ({
 
 function App() {
   const [rooms, setRooms] = useState<Room[]>([
-    { id: 1, type: 'Sala', x: 90, y: 100, width: 7, height: 5, color: '#8ecae6' },
-    { id: 2, type: 'Quarto', x: 315, y: 100, width: 4, height: 4, color: '#ffd166' },
-    { id: 3, type: 'Cozinha', x: 90, y: 310, width: 4, height: 3, color: '#90be6d' },
-    { id: 4, type: 'Banheiro', x: 315, y: 310, width: 3, height: 2.5, color: '#cdb4db' },
+    { id: 1, type: 'Sala', x: 90, y: 110, width: 7, height: 5, color: '#8ecae6' },
+    { id: 2, type: 'Quarto', x: 315, y: 110, width: 4, height: 4, color: '#ffd166' },
+    { id: 3, type: 'Cozinha', x: 90, y: 320, width: 4, height: 3, color: '#90be6d' },
+    { id: 4, type: 'Banheiro', x: 315, y: 320, width: 3, height: 2.5, color: '#cdb4db' },
   ]);
   const [selectedId, setSelectedId] = useState<number>(1);
   const [gridSize, setGridSize] = useState(1);
+  const [showWalls, setShowWalls] = useState(true);
+  const [wallThickness, setWallThickness] = useState(2.5);
+  const [smartLayout, setSmartLayout] = useState(true);
   const svgRef = useRef<SVGSVGElement | null>(null);
   const dragRef = useRef<{ roomId: number; offsetX: number; offsetY: number } | null>(null);
 
@@ -63,6 +65,19 @@ function App() {
     () => rooms.reduce((sum, room) => sum + room.width * room.height, 0),
     [rooms],
   );
+
+  const planBounds = useMemo(() => {
+    if (rooms.length === 0) {
+      return { x: 0, y: 0, width: 0, height: 0 };
+    }
+
+    const minX = Math.min(...rooms.map((room) => room.x));
+    const minY = Math.min(...rooms.map((room) => room.y));
+    const maxX = Math.max(...rooms.map((room) => room.x + room.width * 30));
+    const maxY = Math.max(...rooms.map((room) => room.y + room.height * 30));
+
+    return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+  }, [rooms]);
 
   const addRoom = (type: RoomType) => {
     const newId = Date.now() + Math.random();
@@ -87,13 +102,18 @@ function App() {
       exportedAt: new Date().toISOString(),
       rooms,
       totalArea,
+      walls: {
+        enabled: showWalls,
+        thickness: wallThickness,
+        smartLayout,
+      },
     };
 
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = 'planta-da-casa.json';
+    link.download = 'planta-da-casa-smart.json';
     link.click();
     URL.revokeObjectURL(url);
   };
@@ -127,8 +147,8 @@ function App() {
     const room = rooms.find((item) => item.id === dragRef.current?.roomId);
     if (!room) return;
 
-    const nextX = clamp(point.x - dragRef.current.offsetX, 15, 610 - room.width);
-    const nextY = clamp(point.y - dragRef.current.offsetY, 15, 430 - room.height);
+    const nextX = clamp(point.x - dragRef.current.offsetX, 15, 610 - room.width * 30);
+    const nextY = clamp(point.y - dragRef.current.offsetY, 15, 430 - room.height * 30);
 
     updateRoom(room.id, {
       x: nextX,
@@ -144,8 +164,8 @@ function App() {
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand-block">
-          <p className="eyebrow">Planner</p>
-          <h1>Planta da Casa</h1>
+          <p className="eyebrow">Smart Planner</p>
+          <h1>Planta Inteligente</h1>
         </div>
 
         <section className="panel">
@@ -161,6 +181,17 @@ function App() {
 
         <section className="panel">
           <h2>Configuração</h2>
+
+          <label className="toggle-row">
+            <span>Mostrar paredes</span>
+            <input type="checkbox" checked={showWalls} onChange={() => setShowWalls((value) => !value)} />
+          </label>
+
+          <label className="toggle-row">
+            <span>Layout inteligente</span>
+            <input type="checkbox" checked={smartLayout} onChange={() => setSmartLayout((value) => !value)} />
+          </label>
+
           <label>
             Tamanho da grade
             <input
@@ -170,6 +201,18 @@ function App() {
               step="0.1"
               value={gridSize}
               onChange={(event) => setGridSize(Number(event.target.value))}
+            />
+          </label>
+
+          <label>
+            Espessura da parede
+            <input
+              type="range"
+              min="1"
+              max="6"
+              step="0.5"
+              value={wallThickness}
+              onChange={(event) => setWallThickness(Number(event.target.value))}
             />
           </label>
 
@@ -292,15 +335,49 @@ function App() {
               />
             ))}
 
+            {showWalls && (
+              <>
+                <rect
+                  x={planBounds.x - 8}
+                  y={planBounds.y - 8}
+                  width={planBounds.width + 16}
+                  height={planBounds.height + 16}
+                  fill="none"
+                  stroke="#123a60"
+                  strokeWidth={wallThickness}
+                  strokeDasharray={smartLayout ? '10 10' : '0'}
+                  rx={12}
+                  opacity={0.82}
+                />
+
+                {rooms.map((room) => (
+                  <rect
+                    key={`wall-${room.id}`}
+                    x={room.x - 3}
+                    y={room.y - 3}
+                    width={room.width * 30 + 6}
+                    height={room.height * 30 + 6}
+                    fill="none"
+                    stroke="#234d7a"
+                    strokeWidth={wallThickness}
+                    rx={10}
+                    opacity={0.7}
+                  />
+                ))}
+              </>
+            )}
+
             {rooms.map((room) => {
               const isSelected = room.id === selectedId;
+              const roomWidth = room.width * 30;
+              const roomHeight = room.height * 30;
               return (
                 <g key={room.id}>
                   <rect
                     x={room.x}
                     y={room.y}
-                    width={room.width * 30}
-                    height={room.height * 30}
+                    width={roomWidth}
+                    height={roomHeight}
                     fill={room.color}
                     opacity={isSelected ? 1 : 0.8}
                     stroke={isSelected ? '#123a60' : '#1a1a1a'}
@@ -311,8 +388,8 @@ function App() {
                     onClick={() => setSelectedId(room.id)}
                   />
                   <text
-                    x={room.x + room.width * 15}
-                    y={room.y + room.height * 15}
+                    x={room.x + roomWidth / 2}
+                    y={room.y + roomHeight / 2}
                     textAnchor="middle"
                     dominantBaseline="middle"
                     fontSize="13"
