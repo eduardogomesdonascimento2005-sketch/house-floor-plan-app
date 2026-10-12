@@ -19,6 +19,24 @@ type Room = {
   color: string;
 };
 
+type WindowItem = {
+  id: number;
+  roomId: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+type DoorItem = {
+  id: number;
+  roomId: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
 const ROOM_TYPES: RoomType[] = ['Sala', 'Quarto', 'Cozinha', 'Banheiro', 'Hall', 'Garagem', 'Escritório'];
 
 const ROOM_PRESETS: Record<RoomType, { width: number; height: number; color: string }> = {
@@ -51,11 +69,21 @@ function App() {
     { id: 3, type: 'Cozinha', x: 90, y: 320, width: 4, height: 3, color: '#90be6d' },
     { id: 4, type: 'Banheiro', x: 315, y: 320, width: 3, height: 2.5, color: '#cdb4db' },
   ]);
+  const [windows, setWindows] = useState<WindowItem[]>([
+    { id: 1, roomId: 1, x: 110, y: 110, width: 1.5, height: 0.35 },
+    { id: 2, roomId: 2, x: 330, y: 110, width: 1.5, height: 0.35 },
+  ]);
+  const [doors, setDoors] = useState<DoorItem[]>([
+    { id: 1, roomId: 1, x: 150, y: 110, width: 0.8, height: 2.2 },
+    { id: 2, roomId: 3, x: 110, y: 340, width: 0.8, height: 2.2 },
+  ]);
   const [selectedId, setSelectedId] = useState<number>(1);
   const [gridSize, setGridSize] = useState(1);
   const [showWalls, setShowWalls] = useState(true);
   const [wallThickness, setWallThickness] = useState(2.5);
   const [smartLayout, setSmartLayout] = useState(true);
+  const [autoSave, setAutoSave] = useState(true);
+  const [floorLevel, setFloorLevel] = useState(1);
   const svgRef = useRef<SVGSVGElement | null>(null);
   const dragRef = useRef<{ roomId: number; offsetX: number; offsetY: number } | null>(null);
 
@@ -65,6 +93,10 @@ function App() {
     () => rooms.reduce((sum, room) => sum + room.width * room.height, 0),
     [rooms],
   );
+
+  const wallLength = useMemo(() => {
+    return rooms.reduce((sum, room) => sum + (room.width + room.height) * 2, 0);
+  }, [rooms]);
 
   const planBounds = useMemo(() => {
     if (rooms.length === 0) {
@@ -94,26 +126,63 @@ function App() {
   const removeSelectedRoom = () => {
     if (!selectedRoom || rooms.length === 1) return;
     setRooms((current) => current.filter((room) => room.id !== selectedRoom.id));
+    setWindows((current) => current.filter((item) => item.roomId !== selectedRoom.id));
+    setDoors((current) => current.filter((item) => item.roomId !== selectedRoom.id));
     setSelectedId(rooms.find((room) => room.id !== selectedRoom.id)?.id ?? 0);
+  };
+
+  const addWindowToRoom = () => {
+    if (!selectedRoom) return;
+
+    const newWindow: WindowItem = {
+      id: Date.now() + Math.random(),
+      roomId: selectedRoom.id,
+      x: selectedRoom.x + 20,
+      y: selectedRoom.y + 12,
+      width: 1.7,
+      height: 0.35,
+    };
+
+    setWindows((current) => [...current, newWindow]);
+  };
+
+  const addDoorToRoom = () => {
+    if (!selectedRoom) return;
+
+    const newDoor: DoorItem = {
+      id: Date.now() + Math.random(),
+      roomId: selectedRoom.id,
+      x: selectedRoom.x + 30,
+      y: selectedRoom.y + 10,
+      width: 0.8,
+      height: 2.2,
+    };
+
+    setDoors((current) => [...current, newDoor]);
   };
 
   const exportPlan = () => {
     const payload = {
       exportedAt: new Date().toISOString(),
+      floorLevel,
       rooms,
+      windows,
+      doors,
       totalArea,
+      wallLength,
       walls: {
         enabled: showWalls,
         thickness: wallThickness,
         smartLayout,
       },
+      autoSave,
     };
 
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = 'planta-da-casa-smart.json';
+    link.download = 'planta-da-casa-profissional.json';
     link.click();
     URL.revokeObjectURL(url);
   };
@@ -164,8 +233,8 @@ function App() {
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand-block">
-          <p className="eyebrow">Smart Planner</p>
-          <h1>Planta Inteligente</h1>
+          <p className="eyebrow">Architect Suite</p>
+          <h1>Planta Profissional</h1>
         </div>
 
         <section className="panel">
@@ -192,6 +261,11 @@ function App() {
             <input type="checkbox" checked={smartLayout} onChange={() => setSmartLayout((value) => !value)} />
           </label>
 
+          <label className="toggle-row">
+            <span>Auto salvar</span>
+            <input type="checkbox" checked={autoSave} onChange={() => setAutoSave((value) => !value)} />
+          </label>
+
           <label>
             Tamanho da grade
             <input
@@ -216,11 +290,27 @@ function App() {
             />
           </label>
 
+          <label>
+            Nível / andar
+            <input
+              type="number"
+              min="1"
+              max="10"
+              value={floorLevel}
+              onChange={(event) => setFloorLevel(Number(event.target.value))}
+            />
+          </label>
+
           {selectedRoom && (
             <div className="room-editor">
               <div className="label-row">
                 <span>{selectedRoom.type}</span>
                 <button className="danger" onClick={removeSelectedRoom}>Remover</button>
+              </div>
+
+              <div className="mini-actions">
+                <button className="secondary" onClick={addWindowToRoom}>+ Janela</button>
+                <button className="secondary" onClick={addDoorToRoom}>+ Porta</button>
               </div>
 
               <label>
@@ -297,6 +387,10 @@ function App() {
               <span>Área total</span>
               <strong>{formatArea(totalArea)}</strong>
             </div>
+            <div>
+              <span>Paredes</span>
+              <strong>{wallLength.toFixed(0)} m</strong>
+            </div>
           </div>
           <button className="primary" onClick={exportPlan}>
             Exportar projeto
@@ -371,6 +465,7 @@ function App() {
               const isSelected = room.id === selectedId;
               const roomWidth = room.width * 30;
               const roomHeight = room.height * 30;
+
               return (
                 <g key={room.id}>
                   <rect
@@ -387,6 +482,48 @@ function App() {
                     onPointerDown={(event) => handlePointerDown(event, room)}
                     onClick={() => setSelectedId(room.id)}
                   />
+
+                  {windows
+                    .filter((item) => item.roomId === room.id)
+                    .map((windowItem) => (
+                      <rect
+                        key={`window-${windowItem.id}`}
+                        x={room.x + windowItem.x}
+                        y={room.y + windowItem.y}
+                        width={windowItem.width * 30}
+                        height={windowItem.height * 30}
+                        fill="#dff5ff"
+                        stroke="#05668d"
+                        strokeWidth={1.5}
+                        rx={3}
+                      />
+                    ))}
+
+                  {doors
+                    .filter((item) => item.roomId === room.id)
+                    .map((doorItem) => (
+                      <g key={`door-${doorItem.id}`}>
+                        <rect
+                          x={room.x + doorItem.x}
+                          y={room.y + doorItem.y}
+                          width={doorItem.width * 30}
+                          height={doorItem.height * 30}
+                          fill="#d9a441"
+                          stroke="#7a4d00"
+                          strokeWidth={1.4}
+                          rx={4}
+                        />
+                        <line
+                          x1={room.x + doorItem.x + doorItem.width * 30}
+                          y1={room.y + doorItem.y}
+                          x2={room.x + doorItem.x + doorItem.width * 30}
+                          y2={room.y + doorItem.y + doorItem.height * 30}
+                          stroke="#7a4d00"
+                          strokeWidth={1.2}
+                        />
+                      </g>
+                    ))}
+
                   <text
                     x={room.x + roomWidth / 2}
                     y={room.y + roomHeight / 2}
